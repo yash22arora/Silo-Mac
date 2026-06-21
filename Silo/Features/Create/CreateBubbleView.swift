@@ -28,7 +28,8 @@ struct CreateBubbleView: View {
     @State private var baseMinutes: Int = 30
     // Minutes reflecting the in-progress drag (what we display).
     @State private var currentMinutes: Int = 30
-    // 0 = capsule, 1 = full pinch. Driven by the drag, sprung back on release.
+    // Signed deformation: >0 pinches the waist in (right drag), <0 bulges it out
+    // (left drag). Sprung back to 0 on release.
     @State private var squeeze: CGFloat = 0
     @State private var label: String = ""
     // Delta width
@@ -44,7 +45,11 @@ struct CreateBubbleView: View {
     private let pointsForFullSqueeze: CGFloat = 150
     private let minMinutes = 1
     private let maxMinutes = 180
-    private let maxDeltaWidth: CGFloat = 60
+    private let maxDeltaWidth: CGFloat = 40   // gentler width travel so the pinch reads, not just the shrink
+    // Transparent vertical room reserved around the capsule so the outward
+    // bulge (negative squeeze) is visible instead of clipped. Must match the
+    // value passed to `SqueezeCapsule`.
+    private let bulgeRoom: CGFloat = 12
 
     var body: some View {
         HStack(spacing: 12) {
@@ -74,9 +79,13 @@ struct CreateBubbleView: View {
         // otherwise already fill more than any minimum, so a min has no effect.
         // A concrete width is the only thing `deltaWidth` can actually move.
         .frame(width: 300 + deltaWidth)
+        // Reserve transparent room above/below so the outward bulge isn't
+        // clipped. The capsule stays visually 52pt tall; the glass rect is
+        // 52 + 2*bulgeRoom, and SqueezeCapsule centers the caps within it.
+        .padding(.vertical, bulgeRoom)
         // The glass is clipped to the *animated* squeeze shape, so pulling the
-        // handle physically deforms the material.
-        .glassEffect(.regular, in: SqueezeCapsule(squeeze: squeeze))
+        // handle physically deforms the material in both directions.
+        .glassEffect(.regular, in: SqueezeCapsule(squeeze: squeeze, bulgeRoom: bulgeRoom))
         .glassEffectID("create", in: glassNamespace)
         .glassEffectTransition(.matchedGeometry)
     }
@@ -122,14 +131,18 @@ struct CreateBubbleView: View {
                 let deltaMinutes = Int((dx / pointsPerMinute).rounded())
                 currentMinutes = min(max(baseMinutes + deltaMinutes, minMinutes), maxMinutes)
 
-                // Squeeze responds only to the rightward pull, 0...1.
-                squeeze = min(max(dx, 0) / pointsForFullSqueeze, 1)
+                // One signed value: right → pinch (+), left → bulge (−).
+                squeeze = max(-1, min(dx / pointsForFullSqueeze, 1))
+                // Volume-preserving width, signed BOTH ways: pinching the waist
+                // widens the ends (+), bulging the waist narrows them (−). The
+                // old `max(0, squeeze)` floored the bulge side to zero, which is
+                // why a left drag changed nothing.
                 deltaWidth = squeeze * maxDeltaWidth
 
-                // Fire a haptic + sound each time we cross a whole width point.
-                // `.onChanged` runs far more often than once per point, so we
-                // only tick when the integer step actually changes.
-                let step = Int(deltaWidth)
+                // Ratchet feedback both ways: a signed step that changes once
+                // per unit of deformation, whether pinching or bulging.
+                // `.onChanged` runs far more often than once per step.
+                let step = Int(squeeze * maxDeltaWidth)
                 if step != lastWidthStep {
                     lastWidthStep = step
                     feedback.tick()
