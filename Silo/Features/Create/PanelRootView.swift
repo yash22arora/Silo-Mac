@@ -27,7 +27,7 @@ struct PanelRootView: View {
                 plusBubble
 
                 if isExpanded {
-                    createBubble
+                    CreateBubbleView(glassNamespace: glassNamespace)
                 }
             }
         }
@@ -59,38 +59,6 @@ struct PanelRootView: View {
             }
     }
 
-    // MARK: - The create bubble (placeholder for Increment 3)
-
-    private var createBubble: some View {
-        HStack(spacing: 12) {
-            // Duration readout — becomes a live, drag-adjustable value in
-            // Increment 3. Defaults to the 30-minute spec value.
-            Text("30")
-                .font(.system(size: 24, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-            Text("min")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.secondary)
-
-            Divider().frame(height: 24)
-
-            // Label placeholder — becomes an editable NSTextField-backed field
-            // (via NSViewRepresentable) in Increment 3.
-            Text("Label…")
-                .font(.system(size: 15))
-                .foregroundStyle(.tertiary)
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 18)
-        .frame(height: 52)
-        .frame(minWidth: 180)
-        .glassEffect()
-        .glassEffectID("create", in: glassNamespace)
-        // Morph the glass out of (and back into) the neighboring "+" glass
-        // instead of cross-fading as a separate pane.
-        .glassEffectTransition(.matchedGeometry)
-    }
 }
 
 #Preview {

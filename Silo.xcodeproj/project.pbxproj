@@ -3,15 +3,15 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 71;
 	objects = {
 
+/* Begin PBXFileReference section */
+		AA000000000000000000000C /* Silo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Silo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		AA0000000000000000000009 /* Silo */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Silo;
-			sourceTree = "<group>";
-		};
+		AA0000000000000000000009 /* Silo */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Silo; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -42,16 +42,6 @@
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
-
-/* Begin PBXFileReference section */
-		AA000000000000000000000C /* Silo.app */ = {
-			isa = PBXFileReference;
-			explicitFileType = wrapper.application;
-			includeInIndex = 0;
-			path = Silo.app;
-			sourceTree = BUILT_PRODUCTS_DIR;
-		};
-/* End PBXFileReference section */
 
 /* Begin PBXNativeTarget section */
 		AA0000000000000000000002 /* Silo */ = {
@@ -99,7 +89,6 @@
 			);
 			mainGroup = AA000000000000000000000A;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
 			productRefGroup = AA000000000000000000000B /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
