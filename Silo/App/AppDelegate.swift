@@ -5,11 +5,10 @@ import SwiftData
 /// Owns the menu-bar status item and the floating panel, and wires clicks
 /// together. This is the "AppKit spine" of the app; SwiftUI lives *inside* the
 /// panel via `NSHostingView`.
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusItem: NSStatusItem?
     private var panel: FloatingPanel?
-    private var historyWindow: NSWindow?
 
     // The shared persistence stack and timer engine. Created once at launch and
     // injected into the SwiftUI tree (which lives inside the AppKit panel, so we
@@ -64,12 +63,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func showContextMenu() {
         let menu = NSMenu()
         menu.addItem(
-            withTitle: "Open History…",
-            action: #selector(showHistory),
-            keyEquivalent: ""
-        ).target = self
-        menu.addItem(.separator())
-        menu.addItem(
             withTitle: "Quit Silo",
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
@@ -98,81 +91,94 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.orderFrontRegardless()
     }
 
+    /// Fixed panel width; the height is driven by the SwiftUI content.
+    private let panelWidth: CGFloat = 460
+
     private func makePanel() -> FloatingPanel {
-        let size = NSSize(width: 320, height: 120)
+        // Start short (just the bubble row); the first content measurement will
+        // grow it to fit.
+        let size = NSSize(width: panelWidth, height: 140)
         let panel = FloatingPanel(
             contentRect: NSRect(origin: .zero, size: size)
         )
         // Embed the SwiftUI tree. `NSHostingView` is the bridge from SwiftUI
         // back into AppKit's view hierarchy. We inject the persistence stack and
         // the shared engine here, since there's no SwiftUI scene to do it for us.
-        let root = PanelRootView()
-            .modelContainer(modelContainer)
-            .environment(engine)
+        // The container reports its measured height back so we can resize the
+        // panel to fit (compact when history is hidden, taller when shown).
+        let root = PanelContainerView { [weak self] height in
+            self?.resizePanel(toContentHeight: height)
+        }
+        .modelContainer(modelContainer)
+        .environment(engine)
+
         let host = NSHostingView(rootView: root)
         host.frame = NSRect(origin: .zero, size: size)
+        host.autoresizingMask = [.width, .height]
         panel.contentView = host
         return panel
     }
 
-    /// Centers the panel horizontally under the status item, a fixed gap below
-    /// the menu bar.
     private func positionPanelUnderStatusItem(_ panel: FloatingPanel) {
+        panel.setFrame(frameForPanel(size: panel.frame.size), display: true)
+    }
+
+    /// The on-screen frame for a panel of `size`: horizontally centered under
+    /// the status item, hanging a fixed gap below the menu bar, and clamped to
+    /// stay fully on screen. The top edge stays put as the height changes, so
+    /// the panel grows *downward*.
+    private func frameForPanel(size: NSSize) -> NSRect {
         guard
             let button = statusItem?.button,
             let buttonWindow = button.window
-        else { return }
+        else { return NSRect(origin: .zero, size: size) }
 
-        // The button's frame in screen coordinates.
-        let buttonFrameInScreen = buttonWindow.convertToScreen(
+        let buttonFrame = buttonWindow.convertToScreen(
             button.convert(button.bounds, to: nil)
         )
-
         let gap: CGFloat = 12
-        let panelSize = panel.frame.size
-        let x = buttonFrameInScreen.midX - panelSize.width / 2
-        let y = buttonFrameInScreen.minY - gap - panelSize.height
+        var x = buttonFrame.midX - size.width / 2
+        let y = buttonFrame.minY - gap - size.height
 
-        panel.setFrameOrigin(NSPoint(x: x, y: y))
-    }
-
-    // MARK: - History window
-
-    /// Opens (or focuses) the main History window.
-    ///
-    /// Because the app is an accessory (`LSUIElement`), it normally has no Dock
-    /// icon or app menu. A real window needs those, so we temporarily raise the
-    /// activation policy to `.regular` while the window is open, then drop back
-    /// to `.accessory` when it closes (see `windowWillClose`).
-    @objc private func showHistory() {
-        if let window = historyWindow {
-            activateForWindow(window)
-            return
+        if let visible = (buttonWindow.screen ?? NSScreen.main)?.visibleFrame {
+            let margin: CGFloat = 8
+            x = min(max(x, visible.minX + margin), visible.maxX - size.width - margin)
         }
-
-        let root = HistoryView()
-            .modelContainer(modelContainer)
-            .environment(engine)
-        let window = NSWindow(contentViewController: NSHostingController(rootView: root))
-        window.title = "Silo"
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
-        window.titlebarAppearsTransparent = true
-        window.isReleasedWhenClosed = false   // we keep a reference to reuse it
-        window.setContentSize(NSSize(width: 420, height: 480))
-        window.center()
-        window.delegate = self
-        historyWindow = window
-        activateForWindow(window)
+        return NSRect(x: x, y: y, width: size.width, height: size.height)
     }
 
-    private func activateForWindow(_ window: NSWindow) {
-        NSApp.setActivationPolicy(.regular)   // gain a Dock icon + focus
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
+    /// Resize the panel to the height SwiftUI reported for its content, keeping
+    /// it anchored under the menu bar. Animated for a smooth grow/shrink.
+    private func resizePanel(toContentHeight height: CGFloat) {
+        guard let panel else { return }
+        let maxHeight = (panel.screen ?? NSScreen.main)?.visibleFrame.height ?? 900
+        let clamped = min(max(height, 80), maxHeight - 40)
+        let newFrame = frameForPanel(size: NSSize(width: panelWidth, height: clamped))
+        guard abs(newFrame.height - panel.frame.height) > 0.5 else { return }
+        // Hop off the SwiftUI layout pass before driving an AppKit animation.
+        DispatchQueue.main.async {
+            panel.setFrame(newFrame, display: true, animate: true)
+        }
+    }
+}
+
+/// Wraps `PanelRootView` and reports its measured height back to AppKit so the
+/// hosting panel can size itself to the content. `onGeometryChange` fires
+/// whenever the reported value changes — here, when history appears/disappears.
+private struct PanelContainerView: View {
+    let onHeightChange: (CGFloat) -> Void
+
+    init(onHeightChange: @escaping (CGFloat) -> Void) {
+        self.onHeightChange = onHeightChange
     }
 
-    func windowWillClose(_ notification: Notification) {
-        // Last window closing → fade back to a pure menu-bar accessory app.
-        NSApp.setActivationPolicy(.accessory)
+    var body: some View {
+        PanelRootView()
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.height
+            } action: { newHeight in
+                onHeightChange(newHeight)
+            }
     }
 }

@@ -24,24 +24,42 @@ struct PanelRootView: View {
 
     @Environment(TimerEngine.self) private var engine
 
-    var body: some View {
-        GlassEffectContainer(spacing: 32) {
-            HStack(spacing: 8) {
-                if engine.activeTask != nil {
-                    // A timer is live → the create flow yields to the countdown.
-                    // It reuses the "create" glassEffectID so the glass morphs
-                    // from the create bubble into the running bubble.
-                    RunningTimerView(glassNamespace: glassNamespace)
-                } else {
-                    plusBubble
+    // We can't filter on `state`/`isActive` in a #Predicate (they're computed,
+    // not stored columns SwiftData can query). So fetch all and check in Swift —
+    // trivial at this volume, and it reuses the same `isActive` logic.
+    @Query private var allTasks: [TimerTask]
+    private var hasPastTasks: Bool { allTasks.contains { !$0.isActive } }
 
-                    if isExpanded {
-                        CreateBubbleView(glassNamespace: glassNamespace)
+    var body: some View {
+        VStack(spacing: 16) {
+            // The bubble row sits at the top, near the menu bar. Its own
+            // GlassEffectContainer keeps the +/create/running morph isolated.
+            GlassEffectContainer(spacing: 32) {
+                HStack(spacing: 8) {
+                    if engine.activeTask != nil {
+                        // A timer is live → the create flow yields to the
+                        // countdown, reusing a glassEffectID so it morphs in.
+                        RunningTimerView(glassNamespace: glassNamespace)
+                    } else {
+                        plusBubble
+
+                        if isExpanded {
+                            CreateBubbleView(glassNamespace: glassNamespace)
+                        }
                     }
                 }
             }
+            .frame(maxWidth: .infinity)
+
+            // The history card floats below the bubbles — only once there's at
+            // least one past (completed/cancelled) timer to show.
+            if hasPastTasks {
+                HistoryView()
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Fill the panel width but take only the natural height of the content,
+        // so the host can measure it and resize the panel to fit.
+        .frame(maxWidth: .infinity, alignment: .top)
         .padding(20)
         // When the active timer clears (Done/Cancel), collapse back to just "+".
         .onChange(of: engine.activeTask == nil) { _, idle in
@@ -81,7 +99,7 @@ struct PanelRootView: View {
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     return PanelRootView()
-        .frame(width: 500, height: 120)
+        .frame(width: 500, height: 500)
         .modelContainer(container)
         .environment(TimerEngine(context: container.mainContext))
 }

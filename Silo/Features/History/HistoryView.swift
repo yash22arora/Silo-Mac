@@ -1,43 +1,76 @@
 import SwiftUI
 import SwiftData
 
-/// The main window's content: every timer the user has created, with any
-/// ongoing one pinned at the top and completed ones below.
+/// The history card that floats *below* the bubble row inside the panel.
 ///
-/// `@Query` is SwiftData's live-fetch property wrapper — the view re-renders
-/// automatically whenever the store changes (a timer starts, finishes, etc.),
-/// no manual reloading. We fetch newest-first and split into "ongoing" vs
-/// "history" in Swift, which keeps the predicate simple and the volume here is
-/// tiny.
+/// Shows only **past** timers (completed / cancelled). The ongoing one is always
+/// visible up in the bubble row, so repeating it here would be redundant.
+///
+/// `@Query` is SwiftData's live-fetch wrapper — the card re-renders whenever the
+/// store changes. We use a `List` (not a ScrollView) specifically because
+/// `.swipeActions` — the swipe-to-rerun affordance — is only available on list
+/// rows. `.scrollContentBackground(.hidden)` strips the List's default backing
+/// so our Liquid Glass card shows through.
 struct HistoryView: View {
     @Query(sort: \TimerTask.createdAt, order: .reverse) private var tasks: [TimerTask]
+    @Environment(TimerEngine.self) private var engine
 
-    private var ongoing: [TimerTask] { tasks.filter(\.isActive) }
-    private var finished: [TimerTask] { tasks.filter { !$0.isActive } }
+    /// Past timers only — exclude the live (running/snoozed) one.
+    private var past: [TimerTask] { tasks.filter { !$0.isActive } }
 
     var body: some View {
-        List {
-            if !ongoing.isEmpty {
-                Section("Ongoing") {
-                    ForEach(ongoing) { TaskRow(task: $0) }
-                }
-            }
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Past timers")
+                .font(.system(size: 11, weight: .semibold))
+                .textCase(.uppercase)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 4)
 
-            Section("History") {
-                if finished.isEmpty {
-                    Text("No completed timers yet")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(finished) { TaskRow(task: $0) }
+            if past.isEmpty {
+                Text("No past timers yet")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 20)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+                List {
+                    ForEach(past) { task in
+                        TaskRow(task: task)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            // Swipe left on a row to rerun that timer. On macOS
+                            // this is a two-finger trackpad swipe.
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button {
+                                    rerun(task)
+                                } label: {
+                                    Label("Rerun", systemImage: "arrow.clockwise")
+                                }
+                                .tint(.accentColor)
+                            }
+                    }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)   // let the glass show through
             }
         }
-        .listStyle(.inset)
-        .frame(minWidth: 380, minHeight: 440)
+        .frame(maxWidth: .infinity)
+        .frame(height: 280)
+        .glassEffect(.regular, in: .rect(cornerRadius: 26))
+    }
+
+    /// Start a fresh timer from a past one's label + duration. The engine's
+    /// single-active rule means this is a no-op if a timer is already running.
+    private func rerun(_ task: TimerTask) {
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
+            _ = engine.start(label: task.label, minutes: task.durationMinutes)
+        }
     }
 }
 
-/// One row in the history list.
+/// One row in the history card.
 private struct TaskRow: View {
     let task: TimerTask
 
@@ -56,14 +89,14 @@ private struct TaskRow: View {
                     .foregroundStyle(.secondary)
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
             Text("\(task.durationMinutes) min")
                 .font(.system(size: 12, weight: .medium))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
     }
 
     private var icon: String {
@@ -104,6 +137,12 @@ private struct TaskRow: View {
     let done = TimerTask(label: "Write report", durationMinutes: 30)
     done.completedAt = .now; done.state = .completed
     ctx.insert(done)
-    ctx.insert(TimerTask(label: "Focus block", durationMinutes: 45))
-    return HistoryView().modelContainer(container)
+    let cancelled = TimerTask(label: "Standup", durationMinutes: 15)
+    cancelled.state = .cancelled; cancelled.completedAt = .now
+    ctx.insert(cancelled)
+    return HistoryView()
+        .frame(width: 420)
+        .padding()
+        .modelContainer(container)
+        .environment(TimerEngine(context: ctx))
 }
