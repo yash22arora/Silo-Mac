@@ -5,10 +5,11 @@ import SwiftData
 /// Owns the menu-bar status item and the floating panel, and wires clicks
 /// together. This is the "AppKit spine" of the app; SwiftUI lives *inside* the
 /// panel via `NSHostingView`.
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private var statusItem: NSStatusItem?
     private var panel: FloatingPanel?
+    private var historyWindow: NSWindow?
 
     // The shared persistence stack and timer engine. Created once at launch and
     // injected into the SwiftUI tree (which lives inside the AppKit panel, so we
@@ -62,6 +63,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showContextMenu() {
         let menu = NSMenu()
+        menu.addItem(
+            withTitle: "Open History…",
+            action: #selector(showHistory),
+            keyEquivalent: ""
+        ).target = self
+        menu.addItem(.separator())
         menu.addItem(
             withTitle: "Quit Silo",
             action: #selector(NSApplication.terminate(_:)),
@@ -127,5 +134,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let y = buttonFrameInScreen.minY - gap - panelSize.height
 
         panel.setFrameOrigin(NSPoint(x: x, y: y))
+    }
+
+    // MARK: - History window
+
+    /// Opens (or focuses) the main History window.
+    ///
+    /// Because the app is an accessory (`LSUIElement`), it normally has no Dock
+    /// icon or app menu. A real window needs those, so we temporarily raise the
+    /// activation policy to `.regular` while the window is open, then drop back
+    /// to `.accessory` when it closes (see `windowWillClose`).
+    @objc private func showHistory() {
+        if let window = historyWindow {
+            activateForWindow(window)
+            return
+        }
+
+        let root = HistoryView()
+            .modelContainer(modelContainer)
+            .environment(engine)
+        let window = NSWindow(contentViewController: NSHostingController(rootView: root))
+        window.title = "Silo"
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        window.titlebarAppearsTransparent = true
+        window.isReleasedWhenClosed = false   // we keep a reference to reuse it
+        window.setContentSize(NSSize(width: 420, height: 480))
+        window.center()
+        window.delegate = self
+        historyWindow = window
+        activateForWindow(window)
+    }
+
+    private func activateForWindow(_ window: NSWindow) {
+        NSApp.setActivationPolicy(.regular)   // gain a Dock icon + focus
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        // Last window closing → fade back to a pure menu-bar accessory app.
+        NSApp.setActivationPolicy(.accessory)
     }
 }
