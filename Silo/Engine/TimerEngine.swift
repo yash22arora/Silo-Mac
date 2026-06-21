@@ -33,6 +33,7 @@ final class TimerEngine {
 
     @ObservationIgnored private let context: ModelContext
     @ObservationIgnored private var tickLoop: Task<Void, Never>?
+    @ObservationIgnored private let alarm = AlarmPlayer()
 
     init(context: ModelContext) {
         self.context = context
@@ -59,6 +60,7 @@ final class TimerEngine {
     /// Re-arm the ringing timer for `minutes` more.
     func snooze(minutes: Int = 5) {
         guard let task = activeTask else { return }
+        alarm.stop()
         task.endDate = Date.now.addingTimeInterval(TimeInterval(minutes * 60))
         task.state = .snoozed
         try? context.save()
@@ -92,8 +94,18 @@ final class TimerEngine {
         tickLoop = Task { @MainActor in
             while !Task.isCancelled {
                 updateRemaining()
-                if activeTask == nil || isRinging { break }
-                try? await Task.sleep(for: .milliseconds(250))
+                guard let task = activeTask, !isRinging else { break }
+
+                // Sleep until just past the next whole-second boundary instead
+                // of on a fixed interval. Because the wake time is recomputed
+                // from the absolute `endDate` every loop, the countdown can
+                // never drift from wall-clock time, and the displayed second
+                // flips exactly when it should (no skipped/lingering seconds).
+                let rem = task.endDate.timeIntervalSinceNow
+                if rem <= 0 { continue } // ring on the next updateRemaining()
+                let fraction = rem - floor(rem)
+                let delay = (fraction == 0 ? 1 : fraction) + 0.02 // land just after the flip
+                try? await Task.sleep(for: .seconds(delay))
             }
         }
     }
@@ -108,12 +120,14 @@ final class TimerEngine {
         isRinging = true
         remaining = 0
         tickLoop?.cancel()
+        alarm.start()
         onRing?(task)
     }
 
     private func finish() {
         tickLoop?.cancel()
         tickLoop = nil
+        alarm.stop()
         activeTask = nil
         isRinging = false
         remaining = 0

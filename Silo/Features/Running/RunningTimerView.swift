@@ -26,7 +26,7 @@ struct RunningTimerView: View {
                     .font(.system(size: engine.isRinging ? 13 : 22,
                                   weight: .semibold, design: .rounded))
                     .monospacedDigit()
-                    .contentTransition(.numericText())
+                    .contentTransition(.numericText(countsDown: true))
                     .foregroundStyle(engine.isRinging ? .secondary : .primary)
             }
 
@@ -50,16 +50,21 @@ struct RunningTimerView: View {
         .frame(height: 56)
         .frame(minWidth: 260)
         .glassEffect(.regular, in: .capsule)
-        .glassEffectID("create", in: glassNamespace) // reuse id → morph from create bubble
+        .glassEffectID("plus", in: glassNamespace) // reuse id → morph from create bubble
         .glassEffectTransition(.matchedGeometry)
         // Animate the count/ring swap so layout changes glide.
         .animation(.snappy, value: engine.isRinging)
-        .animation(.default, value: Int(engine.remaining))
+        // Roll the digits in step with the displayed second (ceil), so the
+        // transition fires exactly when the number on screen changes.
+        .animation(.default, value: displaySeconds)
     }
 
+    /// Whole seconds remaining, rounded UP: shows "01" until we truly hit zero,
+    /// then "00" — matching how people expect a countdown to read.
+    private var displaySeconds: Int { Int(engine.remaining.rounded(.up)) }
+
     private var timeString: String {
-        let total = Int(engine.remaining.rounded())
-        return String(format: "%02d:%02d", total / 60, total % 60)
+        String(format: "%02d:%02d", displaySeconds / 60, displaySeconds % 60)
     }
 }
 
