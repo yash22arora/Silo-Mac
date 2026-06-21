@@ -42,7 +42,7 @@ struct CreateBubbleView: View {
     // Tuning constants for the drag feel.
     private let pointsPerMinute: CGFloat = 10     // smaller = faster ramp
     private let pointsForFullSqueeze: CGFloat = 150
-    private let minMinutes = 5
+    private let minMinutes = 1
     private let maxMinutes = 180
     private let maxDeltaWidth: CGFloat = 60
 

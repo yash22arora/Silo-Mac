@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var panel: FloatingPanel?
     private var bannerPanel: FloatingPanel?
+    private var escMonitor: Any?
 
     // The shared persistence stack and timer engine. Created once at launch and
     // injected into the SwiftUI tree (which lives inside the AppKit panel, so we
@@ -35,6 +36,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the Snooze/Done controls. (Increment 6 upgrades this to a banner.)
         engine.onRing = { [weak self] _ in
             self?.showBanner()
+        }
+        installEscapeMonitor()
+    }
+
+    /// Dismiss any visible Silo surface on the Escape key. A *local* event
+    /// monitor sees the keystroke before it's routed to a responder, so it works
+    /// even while the label TextField is focused (whose field editor would
+    /// otherwise swallow Escape). Returning `nil` consumes the event.
+    private func installEscapeMonitor() {
+        escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.keyCode == 53 else { return event } // 53 = Esc
+            // Only the main panel. The completion banner is intentionally NOT
+            // Esc-dismissable: hiding it would leave the looping alarm playing
+            // with no way to stop it — it requires an explicit Snooze/Done.
+            if self.panel?.isVisible == true {
+                self.panel?.orderOut(nil)
+                return nil
+            }
+            return event
         }
     }
 
