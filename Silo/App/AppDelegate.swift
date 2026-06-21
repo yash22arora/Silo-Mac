@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import SwiftData
 
 /// Owns the menu-bar status item and the floating panel, and wires clicks
 /// together. This is the "AppKit spine" of the app; SwiftUI lives *inside* the
@@ -9,8 +10,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var panel: FloatingPanel?
 
+    // The shared persistence stack and timer engine. Created once at launch and
+    // injected into the SwiftUI tree (which lives inside the AppKit panel, so we
+    // wire the environment by hand rather than via a SwiftUI scene modifier).
+    private let modelContainer: ModelContainer = {
+        do {
+            return try ModelContainer(for: TimerTask.self)
+        } catch {
+            fatalError("Failed to create ModelContainer: \(error)")
+        }
+    }()
+    private lazy var engine = TimerEngine(context: modelContainer.mainContext)
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         setUpStatusItem()
+        // When a timer rings, make sure the panel is visible so the user sees
+        // the Snooze/Done controls. (Increment 6 upgrades this to a banner.)
+        engine.onRing = { [weak self] _ in
+            self?.showPanel()
+        }
     }
 
     // MARK: - Status item
@@ -79,8 +97,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             contentRect: NSRect(origin: .zero, size: size)
         )
         // Embed the SwiftUI tree. `NSHostingView` is the bridge from SwiftUI
-        // back into AppKit's view hierarchy.
-        let host = NSHostingView(rootView: PanelRootView())
+        // back into AppKit's view hierarchy. We inject the persistence stack and
+        // the shared engine here, since there's no SwiftUI scene to do it for us.
+        let root = PanelRootView()
+            .modelContainer(modelContainer)
+            .environment(engine)
+        let host = NSHostingView(rootView: root)
         host.frame = NSRect(origin: .zero, size: size)
         panel.contentView = host
         return panel

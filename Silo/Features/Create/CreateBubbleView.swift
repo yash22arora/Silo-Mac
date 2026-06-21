@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 /// The timer-creation bubble (Increment 3).
 ///
@@ -15,6 +16,8 @@ import SwiftUI
 struct CreateBubbleView: View {
     /// Shared identity space so this bubble can morph out of the "+".
     let glassNamespace: Namespace.ID
+
+    @Environment(TimerEngine.self) private var engine
 
     // Minutes committed before the current drag began.
     @State private var baseMinutes: Int = 30
@@ -48,6 +51,14 @@ struct CreateBubbleView: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 15))
                 .frame(minWidth: 70)
+                // Enter starts the timer. The engine flips `activeTask`, and
+                // PanelRootView morphs this bubble into the running view — we
+                // animate so that swap glides instead of snapping.
+                .onSubmit {
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
+                        _ = engine.start(label: label, minutes: currentMinutes)
+                    }
+                }
 
             dragHandle
         }
@@ -138,7 +149,13 @@ struct CreateBubbleView: View {
 
 private struct PreviewWrapper: View {
     @Namespace var ns
+    private let container = try! ModelContainer(
+        for: TimerTask.self,
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+    )
     var body: some View {
         GlassEffectContainer { CreateBubbleView(glassNamespace: ns) }
+            .modelContainer(container)
+            .environment(TimerEngine(context: container.mainContext))
     }
 }

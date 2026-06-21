@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 /// The floating panel's content (Increment 2).
 ///
@@ -21,18 +22,31 @@ struct PanelRootView: View {
     /// change tell Liquid Glass to morph rather than cross-fade.
     @Namespace private var glassNamespace
 
+    @Environment(TimerEngine.self) private var engine
+
     var body: some View {
         GlassEffectContainer(spacing: 32) {
             HStack(spacing: 8) {
-                plusBubble
+                if engine.activeTask != nil {
+                    // A timer is live → the create flow yields to the countdown.
+                    // It reuses the "create" glassEffectID so the glass morphs
+                    // from the create bubble into the running bubble.
+                    RunningTimerView(glassNamespace: glassNamespace)
+                } else {
+                    plusBubble
 
-                if isExpanded {
-                    CreateBubbleView(glassNamespace: glassNamespace)
+                    if isExpanded {
+                        CreateBubbleView(glassNamespace: glassNamespace)
+                    }
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(20)
+        // When the active timer clears (Done/Cancel), collapse back to just "+".
+        .onChange(of: engine.activeTask == nil) { _, idle in
+            if idle { isExpanded = false }
+        }
     }
 
     // MARK: - The "+" bubble
@@ -62,6 +76,12 @@ struct PanelRootView: View {
 }
 
 #Preview {
-    PanelRootView()
-        .frame(width: 340, height: 120)
+    let container = try! ModelContainer(
+        for: TimerTask.self,
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+    )
+    return PanelRootView()
+        .frame(width: 500, height: 120)
+        .modelContainer(container)
+        .environment(TimerEngine(context: container.mainContext))
 }
