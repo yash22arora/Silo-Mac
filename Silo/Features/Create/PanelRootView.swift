@@ -22,15 +22,12 @@ struct PanelRootView: View {
     @Namespace private var glassNamespace
 
     var body: some View {
-        GlassEffectContainer(spacing: 16) {
-            HStack(spacing: 16) {
+        GlassEffectContainer(spacing: 32) {
+            HStack(spacing: 8) {
                 plusBubble
 
                 if isExpanded {
                     createBubble
-                        // A glass-aware insertion/removal: the bubble grows out
-                        // of the container instead of just appearing.
-                        .transition(.scale.combined(with: .opacity))
                 }
             }
         }
@@ -45,14 +42,18 @@ struct PanelRootView: View {
             .font(.system(size: 22, weight: .semibold))
             .foregroundStyle(.primary)
             .frame(width: 52, height: 52)
-            .glassEffect(.regular.interactive(), in: .circle)
+            .glassEffect()
             // Stable identity for this glass shape within the container.
             .glassEffectID("plus", in: glassNamespace)
+            // The "+" is the morph *target* on collapse, so it must also opt
+            // into matched-geometry morphing — otherwise the create bubble has
+            // nothing to flow back into and just pops out of existence.
+            .glassEffectTransition(.matchedGeometry)
             .contentShape(.circle)
             .onTapGesture {
                 // One spring drives BOTH the layout (HStack reflow → "+" slides
                 // left) and the Liquid Glass morph of the new bubble.
-                withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.72)) {
                     isExpanded.toggle()
                 }
             }
@@ -84,12 +85,15 @@ struct PanelRootView: View {
         .padding(.horizontal, 18)
         .frame(height: 52)
         .frame(minWidth: 180)
-        .glassEffect(.regular, in: .capsule)
+        .glassEffect()
         .glassEffectID("create", in: glassNamespace)
+        // Morph the glass out of (and back into) the neighboring "+" glass
+        // instead of cross-fading as a separate pane.
+        .glassEffectTransition(.matchedGeometry)
     }
 }
 
 #Preview {
     PanelRootView()
-        .frame(width: 320, height: 120)
+        .frame(width: 340, height: 120)
 }
