@@ -31,7 +31,7 @@ struct SqueezeCapsule: Shape {
 
         // How far the middle can collapse inward at squeeze == 1. Capped so the
         // waist never fully closes.
-        let maxPinch = r * 0.62
+        let maxPinch = r * 0.40
         let pinch = maxPinch * max(0, min(1, squeeze))
 
         // Guard against degenerate sizes (very narrow bubbles).

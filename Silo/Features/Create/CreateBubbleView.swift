@@ -23,12 +23,20 @@ struct CreateBubbleView: View {
     // 0 = capsule, 1 = full pinch. Driven by the drag, sprung back on release.
     @State private var squeeze: CGFloat = 0
     @State private var label: String = ""
+    // Delta width
+    @State private var deltaWidth: CGFloat = 0
+    // Last whole width-point we fired feedback on, so we tick once per point
+    // instead of on every (very frequent) drag callback.
+    @State private var lastWidthStep: Int = 0
+
+    private let feedback = RatchetFeedback()
 
     // Tuning constants for the drag feel.
-    private let pointsPerMinute: CGFloat = 6     // smaller = faster ramp
-    private let pointsForFullSqueeze: CGFloat = 130
+    private let pointsPerMinute: CGFloat = 10     // smaller = faster ramp
+    private let pointsForFullSqueeze: CGFloat = 150
     private let minMinutes = 5
     private let maxMinutes = 180
+    private let maxDeltaWidth: CGFloat = 60
 
     var body: some View {
         HStack(spacing: 12) {
@@ -45,7 +53,10 @@ struct CreateBubbleView: View {
         }
         .padding(.horizontal, 18)
         .frame(height: 52)
-        .frame(minWidth: 190)
+        // Use an explicit `width` (not `minWidth`): the flexible TextField would
+        // otherwise already fill more than any minimum, so a min has no effect.
+        // A concrete width is the only thing `deltaWidth` can actually move.
+        .frame(width: 300 + deltaWidth)
         // The glass is clipped to the *animated* squeeze shape, so pulling the
         // handle physically deforms the material.
         .glassEffect(.regular, in: SqueezeCapsule(squeeze: squeeze))
@@ -60,11 +71,16 @@ struct CreateBubbleView: View {
             Text("\(currentMinutes)")
                 .font(.system(size: 24, weight: .semibold, design: .rounded))
                 .monospacedDigit()
-                .contentTransition(.numericText())   // digits roll, not snap
+                .contentTransition(.numericText(value: Double(currentMinutes)))   // digits roll, not snap
             Text("min")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
         }
+        // Scope an animation to ONLY the minutes value. This gives the
+        // numericText content transition a transaction to ride on (so the
+        // digits roll) without animating `squeeze`/`deltaWidth`, which must keep
+        // tracking the drag instantly.
+        .animation(.snappy(duration: 0.18), value: currentMinutes)
     }
 
     private var dragHandle: some View {
@@ -91,12 +107,24 @@ struct CreateBubbleView: View {
 
                 // Squeeze responds only to the rightward pull, 0...1.
                 squeeze = min(max(dx, 0) / pointsForFullSqueeze, 1)
+                deltaWidth = squeeze * maxDeltaWidth
+
+                // Fire a haptic + sound each time we cross a whole width point.
+                // `.onChanged` runs far more often than once per point, so we
+                // only tick when the integer step actually changes.
+                let step = Int(deltaWidth)
+                if step != lastWidthStep {
+                    lastWidthStep = step
+                    feedback.tick()
+                }
             }
             .onEnded { _ in
                 // Commit the new duration; spring the bubble back to a capsule.
                 baseMinutes = currentMinutes
+                lastWidthStep = 0
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.55)) {
                     squeeze = 0
+                    deltaWidth = 0
                 }
             }
     }
