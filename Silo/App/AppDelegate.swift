@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusItem: NSStatusItem?
     private var panel: FloatingPanel?
+    private var bannerPanel: FloatingPanel?
 
     // The shared persistence stack and timer engine. Created once at launch and
     // injected into the SwiftUI tree (which lives inside the AppKit panel, so we
@@ -33,7 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // When a timer rings, make sure the panel is visible so the user sees
         // the Snooze/Done controls. (Increment 6 upgrades this to a banner.)
         engine.onRing = { [weak self] _ in
-            self?.showPanel()
+            self?.showBanner()
         }
     }
 
@@ -112,6 +113,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: .siloPanelDidOpen, object: nil)
         }
+    }
+
+    // MARK: - Completion banner
+
+    /// Show the gentle completion banner near the menu bar. Non-activating, so
+    /// it doesn't pull the user out of whatever they're doing; the looping alarm
+    /// (started by the engine) keeps playing until they pick Snooze or Done.
+    private func showBanner() {
+        // Avoid a redundant second "ringing" surface if the main panel is open.
+        panel?.orderOut(nil)
+
+        let banner = bannerPanel ?? makeBanner()
+        bannerPanel = banner
+        let size = NSSize(width: 420, height: 96)
+        banner.setFrame(frameForPanel(size: size), display: true)
+        banner.orderFrontRegardless()
+    }
+
+    private func makeBanner() -> FloatingPanel {
+        let size = NSSize(width: 420, height: 96)
+        let banner = FloatingPanel(contentRect: NSRect(origin: .zero, size: size))
+        let root = CompletionBannerView { [weak self] in self?.hideBanner() }
+            .modelContainer(modelContainer)
+            .environment(engine)
+        let host = NSHostingView(rootView: root)
+        host.frame = NSRect(origin: .zero, size: size)
+        host.autoresizingMask = [.width, .height]
+        banner.contentView = host
+        return banner
+    }
+
+    private func hideBanner() {
+        bannerPanel?.orderOut(nil)
     }
 
     /// Fixed panel width; the height is driven by the SwiftUI content.
