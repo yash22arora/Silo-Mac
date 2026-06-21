@@ -71,12 +71,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setUpStatusItem() {
         // `.variableLength` lets the item size to its content (an icon here).
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        let icon = NSImage(named: "MenuIcon")
+        icon?.isTemplate = true
+        icon?.size = NSSize(width: 18, height: 18)
+        icon?.accessibilityDescription = "Silo"
 
         if let button = item.button {
-            button.image = NSImage(
-                systemSymbolName: "timer",
-                accessibilityDescription: "Silo"
-            )
+            button.image = icon
             button.image?.isTemplate = true   // adapts to light/dark menu bar
             button.action = #selector(statusItemClicked(_:))
             button.target = self

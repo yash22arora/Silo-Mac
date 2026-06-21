@@ -6,14 +6,11 @@ import SwiftData
 /// Shows only **past** timers (completed / cancelled). The ongoing one is always
 /// visible up in the bubble row, so repeating it here would be redundant.
 ///
-/// `@Query` is SwiftData's live-fetch wrapper — the card re-renders whenever the
-/// store changes. We use a `List` (not a ScrollView) specifically because
-/// `.swipeActions` — the swipe-to-rerun affordance — is only available on list
-/// rows. `.scrollContentBackground(.hidden)` strips the List's default backing
-/// so our Liquid Glass card shows through.
+/// `@Query` is SwiftData's live-fetch wrapper — the card re-renders whenever the store changes.
 struct HistoryView: View {
     @Query(sort: \TimerTask.createdAt, order: .reverse) private var tasks: [TimerTask]
     @Environment(TimerEngine.self) private var engine
+    @Environment(\.modelContext) private var modelContext
     let glassNamespace: Namespace.ID
     @Namespace private var historyNameSpace
 
@@ -45,13 +42,23 @@ struct HistoryView: View {
                             .glassEffect(.regular, in: .rect(cornerRadius: 26, style: .circular))
                             // Swipe left on a row to rerun that timer. On macOS
                             // this is a two-finger trackpad swipe.
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
                                 Button {
                                     rerun(task)
                                 } label: {
                                     Image(systemName: "arrow.clockwise")
                                         .padding(8)
                                         .glassEffect(.regular, in: .circle)
+                                }
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button {
+                                    delete(task)
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .padding(8)
+                                        .glassEffect(.regular, in: .circle)
+                                        .tint(.red)
                                 }
                             }
                     }
@@ -72,6 +79,14 @@ struct HistoryView: View {
     private func rerun(_ task: TimerTask) {
         withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
             _ = engine.start(label: task.label, minutes: task.durationMinutes)
+        }
+    }
+    
+    /// Permanently remove a past timer from the store. `@Query` observes the
+    /// context, so the row disappears from the list automatically.
+    private func delete(_ task: TimerTask) {
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
+            modelContext.delete(task)
         }
     }
 }

@@ -34,6 +34,10 @@ struct PanelRootView: View {
     @Query private var allTasks: [TimerTask]
     private var hasPastTasks: Bool { allTasks.contains { !$0.isActive } }
 
+    /// Height of the bubble row, fixed to the tallest member (the create bubble:
+    /// 52pt capsule + 2×12pt bulgeRoom) so the "+" never shifts vertically.
+    private let bubbleRowHeight: CGFloat = 76
+
     var body: some View {
         VStack(spacing: 16) {
             // The bubble row sits at the top, near the menu bar. Its own
@@ -55,6 +59,12 @@ struct PanelRootView: View {
                         }
                     }
                 }
+                // Pin the row to the tall bubble's height (52 capsule + 2×12
+                // bulgeRoom). Otherwise the row shrinks 76→52 when the create
+                // bubble collapses, shoving the vertically-centered "+" up — and
+                // the spring overshoots that shift, so the "+" bounces. A fixed
+                // height keeps the "+" purely horizontal as it slides home.
+                .frame(height: bubbleRowHeight)
             }
             .frame(maxWidth: .infinity)
 
