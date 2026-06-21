@@ -17,6 +17,11 @@ struct CreateBubbleView: View {
     /// Shared identity space so this bubble can morph out of the "+".
     let glassNamespace: Namespace.ID
 
+    /// Focus is owned by the parent (so it can focus the field the moment the
+    /// panel opens); we just bind the TextField to it. A `FocusState.Binding`
+    /// lets a child drive a parent's `@FocusState`.
+    let labelFocused: FocusState<Bool>.Binding
+
     @Environment(TimerEngine.self) private var engine
 
     // Minutes committed before the current drag began.
@@ -51,6 +56,7 @@ struct CreateBubbleView: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 15))
                 .frame(minWidth: 70)
+                .focused(labelFocused)
                 // Enter starts the timer. The engine flips `activeTask`, and
                 // PanelRootView morphs this bubble into the running view — we
                 // animate so that swap glides instead of snapping.
@@ -149,13 +155,16 @@ struct CreateBubbleView: View {
 
 private struct PreviewWrapper: View {
     @Namespace var ns
+    @FocusState var focused: Bool
     private let container = try! ModelContainer(
         for: TimerTask.self,
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     var body: some View {
-        GlassEffectContainer { CreateBubbleView(glassNamespace: ns) }
-            .modelContainer(container)
-            .environment(TimerEngine(context: container.mainContext))
+        GlassEffectContainer {
+            CreateBubbleView(glassNamespace: ns, labelFocused: $focused)
+        }
+        .modelContainer(container)
+        .environment(TimerEngine(context: container.mainContext))
     }
 }

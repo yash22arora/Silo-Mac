@@ -14,6 +14,8 @@ import SwiftData
 struct HistoryView: View {
     @Query(sort: \TimerTask.createdAt, order: .reverse) private var tasks: [TimerTask]
     @Environment(TimerEngine.self) private var engine
+    let glassNamespace: Namespace.ID
+    @Namespace private var historyNameSpace
 
     /// Past timers only — exclude the live (running/snoozed) one.
     private var past: [TimerTask] { tasks.filter { !$0.isActive } }
@@ -21,7 +23,7 @@ struct HistoryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Past timers")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .textCase(.uppercase)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 20)
@@ -40,15 +42,17 @@ struct HistoryView: View {
                         TaskRow(task: task)
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
+                            .glassEffect(.regular, in: .rect(cornerRadius: 26, style: .circular))
                             // Swipe left on a row to rerun that timer. On macOS
                             // this is a two-finger trackpad swipe.
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button {
                                     rerun(task)
                                 } label: {
-                                    Label("Rerun", systemImage: "arrow.clockwise")
+                                    Image(systemName: "arrow.clockwise")
+                                        .padding(8)
+                                        .glassEffect(.regular, in: .circle)
                                 }
-                                .tint(.accentColor)
                             }
                     }
                 }
@@ -59,6 +63,8 @@ struct HistoryView: View {
         .frame(maxWidth: .infinity)
         .frame(height: 280)
         .glassEffect(.regular, in: .rect(cornerRadius: 26))
+        .glassEffectID("history", in: glassNamespace)
+        .glassEffectTransition(.matchedGeometry)
     }
 
     /// Start a fresh timer from a past one's label + duration. The engine's
@@ -75,11 +81,7 @@ private struct TaskRow: View {
     let task: TimerTask
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .foregroundStyle(tint)
-                .font(.system(size: 16))
-                .frame(width: 22)
+        HStack(alignment: .center, spacing: 12) {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(task.label)
@@ -92,27 +94,12 @@ private struct TaskRow: View {
             Spacer(minLength: 8)
 
             Text("\(task.durationMinutes) min")
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 14, weight: .semibold))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 6)
-    }
-
-    private var icon: String {
-        switch task.state {
-        case .running, .snoozed: return "timer"
-        case .completed: return "checkmark.circle.fill"
-        case .cancelled: return "xmark.circle"
-        }
-    }
-
-    private var tint: Color {
-        switch task.state {
-        case .running, .snoozed: return .accentColor
-        case .completed: return .green
-        case .cancelled: return .secondary
-        }
+        .padding(.horizontal, 20)
     }
 
     private var subtitle: String {
@@ -129,6 +116,7 @@ private struct TaskRow: View {
 }
 
 #Preview {
+    @Previewable @Namespace var ns
     let container = try! ModelContainer(
         for: TimerTask.self,
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
@@ -140,7 +128,7 @@ private struct TaskRow: View {
     let cancelled = TimerTask(label: "Standup", durationMinutes: 15)
     cancelled.state = .cancelled; cancelled.completedAt = .now
     ctx.insert(cancelled)
-    return HistoryView()
+    return HistoryView(glassNamespace: ns)
         .frame(width: 420)
         .padding()
         .modelContainer(container)

@@ -5,6 +5,12 @@ import SwiftData
 /// Owns the menu-bar status item and the floating panel, and wires clicks
 /// together. This is the "AppKit spine" of the app; SwiftUI lives *inside* the
 /// panel via `NSHostingView`.
+extension Notification.Name {
+    /// Posted when the floating panel is shown, so the SwiftUI content can
+    /// reveal the create bubble and focus the label field.
+    static let siloPanelDidOpen = Notification.Name("siloPanelDidOpen")
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusItem: NSStatusItem?
@@ -29,6 +35,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine.onRing = { [weak self] _ in
             self?.showPanel()
         }
+    }
+
+    /// Hide the panel when the user clicks away (the app loses active status) —
+    /// the "Spotlight" dismissal. We key off app deactivation rather than the
+    /// panel resigning key, because clicking our own status item keeps the app
+    /// active and would otherwise hide-then-reopen the panel.
+    func applicationDidResignActive(_ notification: Notification) {
+        panel?.orderOut(nil)
     }
 
     // MARK: - Status item
@@ -88,7 +102,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let panel = panel ?? makePanel()
         self.panel = panel
         positionPanelUnderStatusItem(panel)
-        panel.orderFrontRegardless()
+        // Activate the app and make the panel key so the label field can receive
+        // keystrokes immediately (a text field needs an active app + key window).
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        // Tell the SwiftUI content to reveal the create bubble and focus it.
+        // Async so a freshly-created hosting view has subscribed to the
+        // notification before we post it (otherwise the first open misses it).
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .siloPanelDidOpen, object: nil)
+        }
     }
 
     /// Fixed panel width; the height is driven by the SwiftUI content.

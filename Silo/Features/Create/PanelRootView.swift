@@ -24,6 +24,10 @@ struct PanelRootView: View {
 
     @Environment(TimerEngine.self) private var engine
 
+    /// Drives the label field's focus. Owned here so we can focus it the instant
+    /// the panel opens, then passed down into `CreateBubbleView`.
+    @FocusState private var labelFocused: Bool
+
     // We can't filter on `state`/`isActive` in a #Predicate (they're computed,
     // not stored columns SwiftData can query). So fetch all and check in Swift —
     // trivial at this volume, and it reuses the same `isActive` logic.
@@ -44,7 +48,10 @@ struct PanelRootView: View {
                         plusBubble
 
                         if isExpanded {
-                            CreateBubbleView(glassNamespace: glassNamespace)
+                            CreateBubbleView(
+                                glassNamespace: glassNamespace,
+                                labelFocused: $labelFocused
+                            )
                         }
                     }
                 }
@@ -54,7 +61,7 @@ struct PanelRootView: View {
             // The history card floats below the bubbles — only once there's at
             // least one past (completed/cancelled) timer to show.
             if hasPastTasks {
-                HistoryView()
+                HistoryView(glassNamespace: glassNamespace)
             }
         }
         // Fill the panel width but take only the natural height of the content,
@@ -65,6 +72,25 @@ struct PanelRootView: View {
         .onChange(of: engine.activeTask == nil) { _, idle in
             if idle { isExpanded = false }
         }
+        // When the panel opens (menu-bar click), reveal the create bubble and
+        // drop the cursor straight into the label field — type-to-fill.
+        .onReceive(NotificationCenter.default.publisher(for: .siloPanelDidOpen)) { _ in
+            guard engine.activeTask == nil else { return }
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
+                isExpanded = true
+            }
+            focusLabelSoon()
+        }
+        // Also focus when the bubble is expanded by tapping "+".
+        .onChange(of: isExpanded) { _, expanded in
+            if expanded { focusLabelSoon() }
+        }
+    }
+
+    /// Move focus to the label on the next runloop tick, after the field has
+    /// actually been inserted into the view tree by the expand animation.
+    private func focusLabelSoon() {
+        DispatchQueue.main.async { labelFocused = true }
     }
 
     // MARK: - The "+" bubble
